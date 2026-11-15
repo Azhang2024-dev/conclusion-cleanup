@@ -1,0 +1,69 @@
+# 清理阈值与判据（改这里，不要改代码）
+version: 1
+updated: 2026-11-15
+
+# ---- 语料边界（已定口径，勿轻易改）----
+corpus:
+  window_min_words: 250
+  window_max_words: 600
+  tail_block_inside_conclusion: false   # 致谢/数据声明/附录等后置块不算结论
+  keep_external_sources: true           # 图源、脚注残片、参考文献行予以保留
+  keep_placement: paragraph_end         # 保留项放段末，绝不留在句中
+
+# ---- 信号阈值 ----
+signals:
+  running_head:
+    min_pages_seen: 2          # 同一行（数字归一化）出现在 >=2 页
+    max_chars: 90              # 超过这个长度不判页眉
+    band_top_ratio: 0.05       # 行 y0 高于本页正文区上边界 5% 页高以内
+    band_max_chars: 110
+  pagenum:
+    patterns:
+      - '^\d{1,4}$'
+      - '^S\d{1,4}$'
+      - '^S\d{10}$'
+  caption:
+    head_pattern: '^(figure|fig\.|table|plate|box|scheme)\s*[0-9ivx]+'
+    source_pattern: '^(source|sources?)\s*:'
+    timestamp_pattern: '^time\s*stamp\s*:'
+    extracted_pattern: '^images?\s+(extracted|taken|adapted|reproduced)\s+from'
+  table:
+    min_consecutive_short_lines: 3
+    short_line_max_chars: 45
+  watermark:
+    pattern: '(downloaded from|brought to you by|authenticated|download date|pre-proof|postprint|author accepted|manuscript accepted|running head|this content downloaded|all rights reserved)'
+  tail_block:
+    label_pattern: '^(data availability|availability of data|acknowledg\w*|research funding|funding|author contributions|authors.? contributions|declarations? of interest|conflict of interest|competing interests|abbreviations|notes on contributor|about the authors?|the authors|author statement|appendix|supplementary|list of references|references)\b'
+    require_prev_terminated: true
+  footnote_call:
+    pattern: '([a-z]{2,})([\.\,\;])?(\d{1,2})$'
+    exclude_years: true
+  pipe:
+    inline_replacement: ', '
+  dup_word:
+    enabled: true
+    known_pairs:
+      - ['influe uence', 'influence']
+      - ['conflic ict', 'conflict']
+  word_split:
+    enabled: false             # 已知未覆盖（1675 处，需词典）
+  mojibake:
+    known_pairs:
+      - ['扖', '过']
+      - ['€Orulv', 'Orulv']
+      - ['T€urkiye', 'Türkiye']
+      - ['quantif ier', 'quantifier']
+      - ['f inding', 'finding']
+      - ['def inite', 'definite']
+
+# ---- 保留项 ----
+keep:
+  - reason: external-source
+    description: 图源、脚注残片、参考文献行 —— 保留但必须移到段末
+
+# ---- 核验阈值 ----
+verify:
+  max_skipped_tokens: 200
+  require_terminal_punct: true
+  forbid_blank_lines: true
+  format: utf8_no_bom_crlf
