@@ -16,6 +16,8 @@ signals:
     min_pages_seen: 2          # 同一行（数字归一化）出现在 >=2 页，且归一化后 >=10 字符
     repeat_any_length_pages: 3 # 短行（归一化后不足 10 字符，如作者缩写页眉）出现 >=3 页也算
     max_chars: 90              # 超过这个长度不判页眉
+    min_body_words: 6          # 带数字且以句号收尾、且 >=6 词的行视为正文，不判页眉
+    never_drop_last_line: true # 结论最后一行永不判为页面装饰
     band_top_ratio: 0.05       # 行 y0 高于本页正文区上边界 5% 页高以内
     band_max_chars: 110
   pagenum:
