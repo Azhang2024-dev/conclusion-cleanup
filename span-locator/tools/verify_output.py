@@ -31,6 +31,17 @@ def norm(s):
     s = re.sub(r"[\s\-]", "", s)
     return s
 
+def cover(line, out):
+    """Fraction of the line's characters that reappear, in order, in the output.
+
+    A line the model repaired (dash glyph, footnote number, a lost space) is
+    still the same line; an exact substring test would call it deleted.
+    """
+    if not line:
+        return 1.0
+    sm = difflib.SequenceMatcher(None, line, out, autojunk=False)
+    return sum(b.size for b in sm.get_matching_blocks()) / len(line)
+
 def furniture(n):
     return bool(FURN.match(n[:30])) or bool(re.fullmatch(r"\d{1,4}", n))
 
@@ -67,7 +78,7 @@ def main(argv=None):
             continue
         if furniture(n):
             continue
-        if n in out:
+        if n in out or cover(n, out) >= 0.90:
             survived.append(i)
         else:
             silent.append(i)
@@ -96,7 +107,7 @@ def main(argv=None):
         else:
             if len(s) == 1 and len(o) == 1 and (s in "de\u00fe" or o in DASH):
                 allowed.append(("破折号还原", s + "->" + o, ctx))
-            elif set(o) <= set(DASH) and len(s) <= 3:
+            elif set(o) <= set(DASH) and len(o) <= len(s) + 1:
                 allowed.append(("破折号展开", s + "->" + o, ctx))
             else:
                 bad.append(("改写", s + "->" + o, ctx))
