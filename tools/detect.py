@@ -26,7 +26,12 @@ def compile_rules(rules):
     sig = rules.get("signals", {})
     rx = {
         "pagenum": [re.compile(p) for p in sig.get("pagenum", {}).get("patterns", [])],
+        "pagenum_inline": re.compile(sig.get("pagenum", {}).get("inline_pattern", r"$^")),
         "caption_head": re.compile(sig.get("caption", {}).get("head_pattern", r"$^")),
+        "caption_caps": re.compile(sig.get("caption", {}).get("head_caps_pattern", r"$^")),
+        "caption_bare": re.compile(sig.get("caption", {}).get("bare_label_pattern", r"$^"), re.I),
+        "footer_frag": re.compile(sig.get("footer_frag", {}).get("pattern", r"$^"), re.I),
+        "footnote_line": re.compile(sig.get("footnote_line", {}).get("pattern", r"$^")),
         "caption_source": re.compile(sig.get("caption", {}).get("source_pattern", r"$^"), re.I),
         "caption_ts": re.compile(sig.get("caption", {}).get("timestamp_pattern", r"$^"), re.I),
         "caption_ext": re.compile(sig.get("caption", {}).get("extracted_pattern", r"$^"), re.I),
@@ -36,6 +41,40 @@ def compile_rules(rules):
         "pipe": re.compile(r"[|¦]"),
     }
     return rx
+
+
+def heading_hint(stage, sha1):
+    """First frozen-stream index of the conclusion body (heading line + 1)."""
+    cache = getattr(stage, '_hint', None)
+    if cache is None:
+        cache = stage._hint = {}
+        p = os.path.join(stage.texts, 'index.csv')
+        for r in lib.read_csv(p):
+            try:
+                cache[r['sha1']] = int(r['heading_line']) + 1
+            except (TypeError, ValueError):
+                continue
+    return cache.get(sha1, 0)
+
+
+def table_hit(rec, s, boxes, pad=6.0, max_chars=70):
+    """Is this line table content?  Two independent conditions:
+
+    - the line sits inside (or within `pad` of) a detected table box on its page
+    - the line looks like a cell: short, and it does not close a sentence
+
+    The second condition matters because find_tables can return a box that
+    covers most of a page; without it, prose lines would be swallowed.
+    """
+    page, y0, y1 = rec.get("page"), rec.get("y0", 0), rec.get("y1", 0)
+    if len(s.strip()) > max_chars:
+        return False
+    if TERM.search(s.strip()) and len(s.split()) >= 6:
+        return False
+    for (bp, x0, by0, x1, by1) in boxes:
+        if bp == page and y0 >= by0 - pad and y1 <= by1 + pad:
+            return True
+    return False
 
 
 def detect_doc(sha1, stage, rules, rx):
@@ -67,6 +106,13 @@ def detect_doc(sha1, stage, rules, rx):
         if len(k) >= 10:
             pcount[k].add(d.get("page"))
 
+    start = heading_hint(stage, sha1)
+    geo = lib.map_lines_to_geo(lines, recs, start) if recs else [None] * n
+    boxes = []
+    for page, arr in (stage.load_tables(sha1) or {}).items():
+        for b in arr or []:
+            boxes.append((int(page), b[0], b[1], b[2], b[3]))
+
     hits = []
     tail_start = None
     for k, ln in enumerate(lines):
@@ -86,7 +132,26 @@ def detect_doc(sha1, stage, rules, rx):
         if any(p.match(s) for p in rx["pagenum"]):
             add("PAGENUM")
             continue
-        if rx["caption_head"].match(s) or rx["caption_source"].match(s) or rx["caption_ts"].match(s) or rx["caption_ext"].match(s):
+        # a page number spliced onto the tail of a body line.  The line stays;
+        # only the token goes (apply.py action "strip"), so this mark is not a
+        # deletion and must not be treated as one downstream.
+        if len(s.split()) >= 3:
+            mi = rx["pagenum_inline"].search(s)
+            if mi:
+                add("PAGENUM_INLINE", mi.group(1))
+                continue
+        # a printer footer / a stray numbered reference line.  Both are checked
+        # before the running-head test: they are short, they repeat, and the
+        # head test would otherwise claim them under the wrong reason code.
+        if rx["footer_frag"].match(s):
+            add("FOOTER_FRAG")
+            continue
+        if rx["footnote_line"].match(s):
+            add("FOOTNOTES")
+            continue
+        if (rx["caption_head"].match(s) or rx["caption_caps"].match(s)
+                or rx["caption_bare"].match(s) or rx["caption_source"].match(s)
+                or rx["caption_ts"].match(s) or rx["caption_ext"].match(s)):
             add("CAPTION")
             continue
         if rx["watermark"].search(s):
@@ -109,6 +174,10 @@ def detect_doc(sha1, stage, rules, rx):
                 (len(key) >= 10 and pages_seen >= min_pages)
                 or pages_seen >= repeat_any_pages):
             add("RUNHEAD", "%d pages" % pages_seen)
+            continue
+        g = geo[k] if k < len(geo) else None
+        if g and boxes and table_hit(g, s, boxes):
+            add("TABLE", "bbox p%s" % g["page"])
             continue
         if rx["pipe"].search(s):
             add("PIPE" if s.strip(" |¦") == "" else "PIPE_PARTIAL")
