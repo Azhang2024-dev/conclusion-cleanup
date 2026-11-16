@@ -24,12 +24,30 @@ signals:
     patterns:
       - '^\d{1,4}$'
       - '^S\d{1,4}$'
-      - '^S\d{10}$'
+      # Elsevier article id printed in the page footer, with an optional
+      # trailing full stop:  S0261444824000284.
+      - '^S\d{8,20}\.?$'
+      # page number whose leading rule survived as a glyph:  !29
+      - '^[!|\u00a6]\s*\d{1,4}$'
+    # a page number spliced onto the tail of a body line:  ... grief S100
+    inline_pattern: '\s+(S\d{1,4})$'
+    inline_action: strip
   caption:
-    head_pattern: '^(figure|fig\.|table|plate|box|scheme)\s*[0-9ivx]+'
+    # the (?![a-z]) guard stops "boxing" / "figured" from matching as a label
+    head_pattern: '^(figure|fig\.|table|plate|box|scheme)\s*[0-9ivx]+(?![a-z])'
+    # all-caps caption label standing alone:  TABLE 4
+    head_caps_pattern: '^(TABLE|FIGURE|FIG\.|PLATE|BOX|SCHEME)\s+[0-9IVX]+\b'
+    # label + number with nothing else on the line (or a "(continued)" mark)
+    bare_label_pattern: '^(?:table|figure|fig\.)\s+\d+\s*(?:\(\s*cont(?:inued|\.)?\s*\))?\s*$'
     source_pattern: '^(source|sources?)\s*:'
     timestamp_pattern: '^time\s*stamp\s*:'
     extracted_pattern: '^images?\s+(extracted|taken|adapted|reproduced)\s+from'
+  # printer footer that a page-break splice dropped into the middle of the text
+  footer_frag:
+    pattern: '^(?:if you )?(?:wish|want) to quote from it\.?$'
+  # a numbered reference line that a footnote block left behind
+  footnote_line:
+    pattern: '^\d{1,2}\s+[A-Z][^()]{0,40}\(\d{4}\)\.$'
   table:
     min_consecutive_short_lines: 3
     short_line_max_chars: 45
