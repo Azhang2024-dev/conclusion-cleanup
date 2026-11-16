@@ -15,7 +15,9 @@ the loop moves on, so a top-up resumes instead of restarting.
 import os, sys, io, json, re, time, hashlib, argparse, subprocess, urllib.request, urllib.error
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="backslashreplace")
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROMPT = open(os.path.join(os.path.dirname(HERE), "prompt.md"), encoding="utf-8").read()
+PROMPTDIR = os.path.dirname(HERE)
+def load_prompt(name):
+    return open(os.path.join(PROMPTDIR, name), encoding="utf-8").read()
 API = "https://api.deepseek.com/chat/completions"
 
 def build_input(stage, sha):
@@ -33,9 +35,26 @@ def post(body, key, timeout=1800):
         raw = json.loads(r.read().decode("utf-8"))
     return raw, round(time.time() - t0, 1)
 
-def ask_dsh(prompt):
-    p = subprocess.run(["dsh", "--profile", "headless", prompt], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=1800, env=dict(os.environ, NO_COLOR="1"))
+def ask_dsh(prompt, workdir):
+    """Fallback path.
+
+    Two constraints force a file-based task: Windows caps a command line at
+    32,767 characters and a full-article prompt is roughly twice that, and
+    Python cannot execute the dsh.ps1 shim directly. So the prompt is written
+    to disk and a one-line ASCII task points at it. This runs an agent loop, not
+    a single completion, so its variance is higher than the HTTP path.
+    """
+    os.makedirs(workdir, exist_ok=True)
+    pf = os.path.join(workdir, "prompt.txt")
+    open(pf, "w", encoding="utf-8").write(prompt)
+    task = ("Read the task file at %s and carry it out exactly. "
+            "It contains the instructions and the article. Reply with only the JSON "
+            "it asks for, no explanation." % pf.replace("\\", "\\\\"))
+    launcher = os.path.join(workdir, "launch.ps1")
+    open(launcher, "w", encoding="utf-8-sig").write(
+        "$env:NO_COLOR='1'\ndsh --profile headless \"%s\" *>&1 | Out-String\n" % task)
+    p = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
     return (p.stdout or ""), {}
 
 def parse_json(s):
@@ -60,11 +79,12 @@ def main(argv=None):
     ap.add_argument("--model", default=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"))
     ap.add_argument("--max-tokens", type=int, default=8000)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--prompt-file", default="prompt.md")
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args(argv)
 
     text, n = build_input(a.stage, a.sha)
-    prompt = PROMPT + "\n\n[文章行流，共 %d 行]\n%s\n\n只输出 JSON。" % (n, text)
+    prompt = load_prompt(a.prompt_file) + "\n\n[文章行流，共 %d 行]\n%s\n\n只输出 JSON。" % (n, text)
     fp = fingerprint(prompt)
     body = {"model": a.model, "temperature": a.temperature, "max_tokens": a.max_tokens,
             "stream": False, "messages": [{"role": "user", "content": prompt}]}
@@ -83,7 +103,8 @@ def main(argv=None):
     key = os.environ.get("DEEPSEEK_API_KEY", "")
     spans = []
     for k in range(1, a.runs + 1):
-        stem = os.path.join(outdir, "t%s_run%d" % (str(a.temperature).replace(".", "p"), k))
+        tag = os.path.splitext(a.prompt_file)[0]
+        stem = os.path.join(outdir, "%s_t%s_run%d" % (tag, str(a.temperature).replace(".", "p"), k))
         try:
             if a.backend == "http":
                 if not key:
@@ -92,7 +113,7 @@ def main(argv=None):
                 content = raw["choices"][0]["message"]["content"]
                 usage = raw.get("usage") or {}
             else:
-                content, usage = ask_dsh(prompt)
+                content, usage = ask_dsh(prompt, outdir)
                 secs = None
         except urllib.error.HTTPError as e:
             msg = e.read().decode("utf-8", "replace")[:300]
@@ -110,6 +131,7 @@ def main(argv=None):
             continue
         res.update({"sha1": a.sha, "prompt_sha256": fp, "backend": a.backend, "model": a.model,
                     "temperature": a.temperature, "seed": a.seed, "usage": usage,
+                    "prompt_file": a.prompt_file,
                     "latency_s": secs, "run": k})
         p = stem + ".json"
         json.dump(res, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
