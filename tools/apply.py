@@ -24,6 +24,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
 
 
+def check_loss(before, after, drop, move):
+    """Every surviving input line must appear in the output.
+
+    Guards against silently trimming a line that was never marked
+    (the truncation bug: a closing sentence removed with the blanks).
+    """
+    out = set(l.strip() for l in after.split("\n") if l.strip())
+    moved = set()
+    for k0, k1 in move:
+        for k in range(k0, k1 + 1):
+            if 0 <= k < len(before):
+                moved.add(k)
+    lost = []
+    for k, ln in enumerate(before):
+        s = ln.strip()
+        if not s or k in drop or k in moved:
+            continue
+        if s not in out:
+            lost.append(s[:60])
+    return lost
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", default=None)
@@ -89,13 +111,16 @@ def main(argv=None):
             if any(k0 <= i <= k1 for k0, k1 in replace):
                 ln = ln.replace(" | ", ", ").replace("\u2003|\u2003", ", ")
             kept.append(ln)
+        # Only trailing blanks left behind by a deletion may be trimmed; a
+        # non-blank last line is content and is never dropped.
         while kept and not kept[-1].strip():
             kept.pop()
-        kept = [ln for ln in kept if ln.strip()] + tail
-        if kept and kept[-1].strip():
-            out_text = "\n".join(kept)
-        else:
-            out_text = ""
+        kept = [ln for ln in kept if ln.strip()] + [ln for ln in tail if ln.strip()]
+        out_text = "\n".join(kept)
+        lost = check_loss(lines, out_text, drop, move)
+        if lost:
+            report.append({"sha1": sha[:12], "k0": "", "k1": "", "status": "LOST-TEXT",
+                           "action": "", "note": "; ".join(lost[:3])})
         lib.write_text(os.path.join(a.out, sha + ".txt"), out_text)
     rep = a.report or os.path.join(stage.reports, "apply_report.csv")
     lib.write_csv(rep, report)
