@@ -32,6 +32,9 @@ import lib  # noqa: E402
 
 RED = "FFFF0000"
 ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# reasons whose remedy is not "drop the line"
+ACTION = {"PAGENUM_INLINE": "去尾页码"}
+STRIP_RX = re.compile(r"\s+S\d{1,4}$")
 
 
 def clean(s):
@@ -110,10 +113,12 @@ def main(argv=None):
             if k >= len(lines):
                 continue
             seg = lines[k]
+            action = ACTION.get(reason, "删除")
+            lost = STRIP_RX.search(seg).group(0).strip() if action == "去尾页码" else seg
             ledger.append({
                 "sha1": sha, "no": sha2no.get(sha, ""), "k_from": k, "k_to": k,
-                "reason": reason, "note": note, "words": lib.count_words(seg),
-                "text": re.sub(r"\s+", " ", seg).strip()[:160], "action": "删除",
+                "reason": reason, "note": note, "words": lib.count_words(lost),
+                "text": re.sub(r"\s+", " ", seg).strip()[:160], "action": action,
             })
 
     def rich(r):
