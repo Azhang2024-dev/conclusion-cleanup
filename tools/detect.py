@@ -49,6 +49,7 @@ def detect_doc(sha1, stage, rules, rx):
     band_ratio = rh.get("band_top_ratio", 0.05)
     band_max = rh.get("band_max_chars", 110)
     repeat_any_pages = rh.get("repeat_any_length_pages", 3)
+    min_body_words = rh.get("min_body_words", 6)
 
     # geometry from the frozen stream
     bodytop = {}
@@ -93,9 +94,18 @@ def detect_doc(sha1, stage, rules, rx):
             continue
         # running head first: it often carries a leading "|" separator and
         # would otherwise be misclassified as a pipe artefact.
+        #
+        # Guards against body sentences that merely coincide with a repeated
+        # phrase (e.g. a one-word closing line "communicative potential."):
+        #   - a sentence-ending line with no digits is never furniture
+        #   - drop nothing that closes the conclusion
         key = lib.norm_num(s)
         pages_seen = len(pcount.get(key, ()))
-        if len(s) <= rh_max and (
+        ends_sentence = bool(TERM.search(s))
+        has_digit = any(ch.isdigit() for ch in s)
+        sentencish = ends_sentence and (not has_digit or len(s.split()) >= min_body_words)
+        is_last = (k == len(lines) - 1) or not any(x.strip() for x in lines[k + 1:])
+        if len(s) <= rh_max and not sentencish and not is_last and (
                 (len(key) >= 10 and pages_seen >= min_pages)
                 or pages_seen >= repeat_any_pages):
             add("RUNHEAD", "%d pages" % pages_seen)
