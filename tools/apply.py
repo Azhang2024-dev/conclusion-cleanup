@@ -24,11 +24,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
 
 
-def check_loss(before, after, drop, move):
+STRIP_RX = re.compile(r"\s+S\d{1,4}$")
+
+
+def check_loss(before, after, drop, move, strip=()):
     """Every surviving input line must appear in the output.
 
     Guards against silently trimming a line that was never marked
     (the truncation bug: a closing sentence removed with the blanks).
+    A stripped line is expected to change, so it is exempt -- but only when
+    the change is exactly the trailing page-number token.
     """
     out = set(l.strip() for l in after.split("\n") if l.strip())
     moved = set()
@@ -40,6 +45,10 @@ def check_loss(before, after, drop, move):
     for k, ln in enumerate(before):
         s = ln.strip()
         if not s or k in drop or k in moved:
+            continue
+        if k in strip:
+            if STRIP_RX.sub("", s) not in out:
+                lost.append(s[:60])
             continue
         if s not in out:
             lost.append(s[:60])
@@ -83,6 +92,7 @@ def main(argv=None):
         drop = set()
         move = []
         replace = []
+        strip = set()
         for m in marks[sha]:
             k0, k1 = m["k0"], min(m["k1"], len(lines) - 1)
             if k0 >= len(lines):
@@ -97,6 +107,8 @@ def main(argv=None):
                 move.append((k0, k1))
             elif m["action"] == "改逗号":
                 replace.append((k0, k1))
+            elif m["action"] == "去尾页码":
+                strip.add(k0)
             else:
                 drop.update(range(k0, k1 + 1))
             report.append({"sha1": sha[:12], "k0": k0, "k1": k1, "status": "ok", "action": m["action"]})
@@ -110,6 +122,8 @@ def main(argv=None):
                 continue
             if any(k0 <= i <= k1 for k0, k1 in replace):
                 ln = ln.replace(" | ", ", ").replace("\u2003|\u2003", ", ")
+            if i in strip:
+                ln = STRIP_RX.sub("", ln)
             kept.append(ln)
         # Only trailing blanks left behind by a deletion may be trimmed; a
         # non-blank last line is content and is never dropped.
@@ -117,7 +131,7 @@ def main(argv=None):
             kept.pop()
         kept = [ln for ln in kept if ln.strip()] + [ln for ln in tail if ln.strip()]
         out_text = "\n".join(kept)
-        lost = check_loss(lines, out_text, drop, move)
+        lost = check_loss(lines, out_text, drop, move, strip)
         if lost:
             report.append({"sha1": sha[:12], "k0": "", "k1": "", "status": "LOST-TEXT",
                            "action": "", "note": "; ".join(lost[:3])})
