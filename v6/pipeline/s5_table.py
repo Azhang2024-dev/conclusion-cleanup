@@ -19,7 +19,15 @@ def clean(v):
 
 
 def app(ws, row):
-    ws.append([clean(x) for x in row])
+    vals = [clean(x) for x in row]
+    ws.append(vals)
+    # openpyxl types any string starting with "=" as a formula; Excel then
+    # "repairs" the file and drops those cells. Deleted lines in 02_删除明细
+    # occasionally start with "=" (e.g. "=khen" in a grammar example), so pin
+    # every text cell back to a string.
+    for i, v in enumerate(vals, 1):
+        if isinstance(v, str):
+            ws.cell(row=ws.max_row, column=i).data_type = "s"
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="backslashreplace")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -311,6 +319,10 @@ def main():
         ["删除对照", "[code] 代码删掉的行号:理由；[llm] 模型删掉的行号:理由"],
         ["两次跨度同 / 两次文本同", "同一篇在 temperature=0 下跑两次的结果是否一致"],
         ["", ""],
+        ["代码侧取哪个文本", "代码_词数 / 代码_在窗 / 文本相似度 / 代码_结论段 三列取 C_conclusions_clean（2026-11-15 清洗版），"
+                          "缺失时回落 C_conclusions。它与 v5 交付文本（2026-10-16）不是同一件：500 篇里 400 篇词数不一致，"
+                          "原因见 R4_llm_all/01_勘误_代码侧口径_2026-11-16.md"],
+        ["要引用 v5 的数字", "用 最终语料库_500篇_v5\\00_清单.csv 的 words 列，不要用本表 代码_词数"],
         ["语料指纹", "697 篇；A_lines 冻结行流；清单 sha256 见 _logs/index_s*.csv"],
         ["词数口径", "wcengine.count.count_words，唯一合法计数方式"],
         ["生成", "s5_table.py；数据源 R4_llm_all/gate.jsonl + cplx_t0p0_run1.json + C_conclusions(_clean)"],
