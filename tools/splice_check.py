@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
 
 TERM = re.compile(r"[.!?:;\"”’)\]]\s*$")
+# a following line that opens a bracket or a quote continues the sentence
+CONT = re.compile(r"^[\s(\[‘“\"'\u2018\u201c]")
 
 
 def main(argv=None):
@@ -54,12 +56,24 @@ def main(argv=None):
         if not os.path.exists(p):
             continue
         lines = lib.lines_of(lib.read_text(p))
+        marked = set()
+        for a0, a1, _ in items:
+            marked.update(range(a0, a1 + 1))
         for k0, k1, reason in sorted(items):
             if k0 >= len(lines):
                 continue
             k1 = min(k1, len(lines) - 1)
-            prev = lines[k0 - 1].rstrip() if k0 > 0 else ""
-            nxt = lines[k1 + 1].lstrip() if k1 + 1 < len(lines) else ""
+            # the real neighbours are the first *surviving* lines: a neighbouring
+            # mark is also going away, so judging against it invents a splice
+            # that will never exist in the output.
+            pi = k0 - 1
+            while pi >= 0 and pi in marked:
+                pi -= 1
+            ni = k1 + 1
+            while ni < len(lines) and ni in marked:
+                ni += 1
+            prev = lines[pi].rstrip() if pi >= 0 else ""
+            nxt = lines[ni].lstrip() if ni < len(lines) else ""
             flags = []
             if not prev:
                 flags.append("at-start")
@@ -70,11 +84,11 @@ def main(argv=None):
             if not nxt:
                 flags.append("at-end")
             else:
-                if nxt[:1].islower():
-                    flags.append("next-lower")
+                if nxt[:1].islower() or CONT.match(nxt):
+                    flags.append("next-cont")
                 if re.match(r"^[\s,;.)\]]", nxt):
                     flags.append("next-punct")
-            dangerous = ("prev-open" in flags) and ("next-lower" not in flags) and ("at-end" not in flags)
+            dangerous = ("prev-open" in flags) and ("next-cont" not in flags) and ("at-end" not in flags)
             rows.append({
                 "sha1": sha[:12], "k_from": k0, "k_to": k1, "reason": reason,
                 "flags": ",".join(flags), "verdict": "DANGEROUS" if dangerous else "ok",
