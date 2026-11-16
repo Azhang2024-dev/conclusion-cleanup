@@ -36,6 +36,9 @@ docs/已定口径.md        三个语料边界决定：后置块不算结论 / �
 rules.yaml              阈值与正则（可改，不用改代码）
 tools/                  detect / mark / splice_check / apply / verify / report
 examples/494篇_验证报告.md   本标准的回归基线：494 篇跑出来的结果
+span-locator/          模型定位技能：提示词、run_doc / sweep / verify_output / determinism
+v6/                    全库重跑（697 篇 × 2 遍）：流水线脚本、逐篇判定、统计
+docs/v6_全量重跑_2026-11-16.md   v6 的完整报告（闸门、边界、去重、亲读）
 ```
 
 ## 回归基线

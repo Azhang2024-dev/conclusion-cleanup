@@ -1,0 +1,30 @@
+﻿指标,值,备注
+文档数,697,
+输入 token 合计,16794924,pass 1
+输出 token 合计,501779,pass 1
+闸门状态,PASS,664
+闸门状态,FAIL,33
+失败类别,clean,664
+失败类别,rewrite_or_insert,13
+失败类别,silent_body,10
+失败类别,insert_outside,8
+失败类别,silent_footnote,2
+边界分类,agree,595
+边界分类,code_overshot,82
+边界分类,model_cut_small,11
+边界分类,model_cut_body,4
+边界分类,no_code_span,4
+边界分类,disjoint,1
+越界类型,ack_front,47
+越界类型,other,11
+越界类型,caps,9
+越界类型,numbered,8
+越界类型,appendix,4
+越界类型,limitations,3
+人工/agent 复核,未复核,555
+人工/agent 复核,ok,121
+人工/agent 复核,fix,21
+逐篇亲读,ok,483
+逐篇亲读,(未读),214
+入册,483,闸门+窗+去重+亲读
+入册总词数,193141,
