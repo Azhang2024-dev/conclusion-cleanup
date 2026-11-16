@@ -157,6 +157,36 @@ def norm_num(t):
     return re.sub(r"\d+", "#", norm_text(t))
 
 
+def map_lines_to_geo(clean_lines, recs, start_hint=0):
+    """Map each clean line to its frozen-stream record by sequential match.
+
+    A global text->record dict is wrong: the same string can occur on many
+    pages (captions, repeated phrases), and taking the first hit puts the line
+    on the wrong page.  Walking both sequences in order keeps the alignment.
+
+    Returns a list aligned with clean_lines; entries are dicts or None.
+    """
+    out = []
+    j = start_hint
+    n = len(recs)
+    for ln in clean_lines:
+        s = ln.strip()
+        if not s:
+            out.append(None)
+            continue
+        hit = None
+        k = j
+        # allow a bounded forward scan: deleted lines sit between matches
+        while k < n and k - j < 80:
+            if recs[k].get('text', '').strip() == s:
+                hit = recs[k]
+                j = k + 1
+                break
+            k += 1
+        out.append(hit)
+    return out
+
+
 def base_of(reason):
     """'PIPE-PARTIAL' -> 'pipe'; 'RUNHEAD' -> 'runhead'."""
     return re.sub(r"[^a-z]", "", reason.lower())
